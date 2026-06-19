@@ -4,11 +4,12 @@ from email.header import decode_header
 from dotenv import load_dotenv
 import os
 
+
 # Load credentials from .env file
 load_dotenv()
 
-EMAIL = os.getenv("EMAIL_ADDRESS")
-PASSWORD = os.getenv("EMAIL_PASSWORD").replace(" ", "")
+EMAIL = os.getenv("EMAIL_ADDRESS", "").strip().replace(" ", "")
+PASSWORD = os.getenv("EMAIL_PASSWORD", "").strip().replace(" ", "")
 
 def connect_to_gmail():
     """Connect to Gmail using IMAP"""
