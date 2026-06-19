@@ -44,11 +44,12 @@ redis_client = redis.Redis.from_url(
 async def get_system_status():
     """Check health of all system components"""
 
+        # Check Ollama
     # Check Ollama
     try:
-        client = ollama.Client(host="http://127.0.0.1:11434")
-        client.list()
-        ollama_ok = True
+        import httpx
+        response = httpx.get("http://127.0.0.1:11434/api/tags", timeout=3)
+        ollama_ok = response.status_code == 200
     except Exception:
         ollama_ok = False
 
@@ -61,7 +62,7 @@ async def get_system_status():
         redis_ok = False
         queue_size = 0
 
-    # Check Database
+  
     # Check Database
     try:
         from sqlalchemy import text
