@@ -69,8 +69,13 @@ RECOMMENDED_ACTION: [What the recipient should do]
     print(f"\n🔍 Analyzing: {subject[:50]}...")
 
     response = ollama.chat(
-        model="llama3.1:8b",
-        messages=[{"role": "user", "content": prompt}]
+    model="llama3.1:8b",
+    messages=[{"role": "user", "content": prompt}],
+    options={
+        "num_predict": 500,    # Max 500 tokens in response
+        "temperature": 0.1,    # Low temp = faster, more consistent
+        "top_p": 0.9,
+    }
     )
 
     ai_response = response["message"]["content"]

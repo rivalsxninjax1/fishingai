@@ -205,3 +205,34 @@ def get_statistics(organization="default"):
 
 if __name__ == "__main__":
     init_database()
+
+def add_trusted_sender(email_address: str, reason: str = "Manual whitelist"):
+    """Add a sender to trusted whitelist"""
+    db = SessionLocal()
+    try:
+        sender = KnownSender(
+            email=email_address,
+            domain=email_address.split("@")[-1] if "@" in email_address else "",
+            status="TRUSTED",
+            reason=reason
+        )
+        db.add(sender)
+        db.commit()
+        print(f"✅ Added {email_address} to whitelist")
+    except Exception as e:
+        print(f"❌ Could not add sender: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
+def is_trusted_sender(email_address: str) -> bool:
+    """Check if sender is whitelisted"""
+    db = SessionLocal()
+    try:
+        sender = db.query(KnownSender)\
+            .filter(KnownSender.email == email_address)\
+            .filter(KnownSender.status == "TRUSTED")\
+            .first()
+        return sender is not None
+    finally:
+        db.close()

@@ -23,65 +23,62 @@ def connect_to_gmail():
         print(f"❌ Connection failed: {e}")
         return None
 
-def fetch_latest_emails(mail, count=5):
-    """Fetch the latest emails from inbox"""
+def fetch_latest_emails(mail, count=10):
+    """Fetch only UNSEEN emails from inbox"""
     emails = []
-    
-    # Select inbox
+
     mail.select("inbox")
-    
-    # Search for all emails
-    status, messages = mail.search(None, "ALL")
+
+    # Only fetch UNSEEN emails — production behaviour
+    status, messages = mail.search(None, "UNSEEN")
     email_ids = messages[0].split()
-    
-    # Get the latest ones
+
+    if not email_ids:
+        print("📭 No new unseen emails")
+        return emails
+
+    # Take latest ones up to count limit
     latest_ids = email_ids[-count:]
-    
-    print(f"\n📧 Fetching last {count} emails...\n")
-    
+    print(f"\n📧 Found {len(latest_ids)} new emails...\n")
+
     for email_id in reversed(latest_ids):
-        # Fetch email by ID
         status, msg_data = mail.fetch(email_id, "(RFC822)")
-        
+
         for response_part in msg_data:
             if isinstance(response_part, tuple):
                 msg = email.message_from_bytes(response_part[1])
-                
-                # Decode subject
+
                 subject, encoding = decode_header(msg["Subject"])[0]
                 if isinstance(subject, bytes):
                     subject = subject.decode(encoding or "utf-8")
-                
-                # Get sender
+
                 sender = msg.get("From")
-                
-                # Get body
+
                 body = ""
                 if msg.is_multipart():
                     for part in msg.walk():
                         if part.get_content_type() == "text/plain":
-                            body = part.get_payload(decode=True).decode()
-                            break
+                            try:
+                                body = part.get_payload(decode=True).decode()
+                                break
+                            except:
+                                pass
                 else:
-                    body = msg.get_payload(decode=True).decode()
-                
-                # Store email data
+                    try:
+                        body = msg.get_payload(decode=True).decode()
+                    except:
+                        body = ""
+
                 email_data = {
                     "subject": subject,
                     "sender": sender,
-                    "body": body[:1000],  # First 1000 chars
+                    "body": body[:2000],
                 }
-                
-                emails.append(email_data)
-                
-                # Print preview
-                print(f"📨 From: {sender}")
-                print(f"📌 Subject: {subject}")
-                print(f"📝 Preview: {body[:100]}...")
-                print("-" * 50)
-    
-    return emails
 
+                emails.append(email_data)
+                print(f"📨 Queuing: {subject[:50]}")
+
+    return emails
 def main():
     # Connect to Gmail
     mail = connect_to_gmail()

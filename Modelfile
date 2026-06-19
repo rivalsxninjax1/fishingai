@@ -1,0 +1,7 @@
+FROM llama3.1:8b-instruct-q4_K_M
+PARAMETER num_ctx 2048
+PARAMETER num_predict 200
+PARAMETER num_gpu 99
+PARAMETER num_batch 512
+PARAMETER temperature 0.1
+SYSTEM "You are PhishGuard email security AI. Be concise and decisive."
