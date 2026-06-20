@@ -47,14 +47,14 @@ class EmailThreat(Base):
     __tablename__ = "email_threats"
 
     id              = Column(Integer, primary_key=True, index=True)
-    
+    message_id      = Column(String(500), index=True)  # No longer unique - handled in app logic 
     # Email details
     sender          = Column(String(500), nullable=False)
     sender_domain   = Column(String(200))
     subject         = Column(String(1000))
     body_preview    = Column(Text)
     received_at     = Column(DateTime, default=datetime.utcnow)
-    
+    gmail_category   = Column(String(50), default="primary")
     # Analysis results
     verdict         = Column(String(50))   # SAFE / SUSPICIOUS / SCAM
     risk_score      = Column(Integer)      # 0-100
@@ -66,6 +66,7 @@ class EmailThreat(Base):
     
     # RAG matching
     matched_patterns = Column(JSON)        # Patterns that matched
+    layer_scores     = Column(JSON) 
     
     # System fields
     analyzed_at     = Column(DateTime, default=datetime.utcnow)
@@ -94,6 +95,21 @@ class ThreatStatistic(Base):
     avg_risk_score  = Column(Float, default=0.0)
     top_category    = Column(String(200))
 
+
+#fucntion check if we have already passed the email 
+
+def is_already_analyzed(message_id: str) -> bool:
+    """Check if this exact email was already analyzed"""
+    if not message_id:
+        return False
+    db = SessionLocal()
+    try:
+        existing = db.query(EmailThreat).filter(
+            EmailThreat.message_id == message_id
+        ).first()
+        return existing is not None
+    finally:
+        db.close()
 # ─────────────────────────────────────
 # KNOWN SENDERS TABLE
 # Whitelist and blacklist
@@ -125,6 +141,21 @@ class Alert(Base):
     resolved_at     = Column(DateTime, nullable=True)
     organization    = Column(String(200), default="default")
 
+
+
+
+    # ─────────────────────────────────────
+# SYSTEM STATE TABLE
+# Tracks checkpoint for email scanning
+# ─────────────────────────────────────
+class SystemState(Base):
+    __tablename__ = "system_state"
+
+    id               = Column(Integer, primary_key=True, index=True)
+    key              = Column(String(100), unique=True, index=True)
+    value            = Column(String(500))
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # ─────────────────────────────────────
 # DATABASE UTILITIES
 # ─────────────────────────────────────
@@ -146,8 +177,9 @@ def save_threat(report: dict, analysis_time: float = 0.0):
     db = SessionLocal()
     try:
         threat = EmailThreat(
+            message_id=report.get("message_id", ""),
             sender=report.get("sender", ""),
-            sender_domain=report.get("sender", "").split("@")[-1] if "@" in report.get("sender", "") else "",
+            sender_domain=report.get("sender", "").split("@")[-1].rstrip(">").strip() if "@" in report.get("sender", "") else "",
             subject=report.get("subject", ""),
             body_preview=report.get("body", "")[:500],
             verdict=report.get("verdict", "UNKNOWN"),
@@ -158,6 +190,7 @@ def save_threat(report: dict, analysis_time: float = 0.0):
             reasons=report.get("reasons", []),
             recommended_action=report.get("recommended_action", ""),
             matched_patterns=report.get("matched_patterns", []),
+            layer_scores=report.get("layer_scores", {}), 
             analysis_time=analysis_time,
         )
         db.add(threat)
@@ -234,5 +267,30 @@ def is_trusted_sender(email_address: str) -> bool:
             .filter(KnownSender.status == "TRUSTED")\
             .first()
         return sender is not None
+    finally:
+        db.close()
+
+        
+def get_system_state(key: str, default: str = None):
+    """Get a system state value by key"""
+    db = SessionLocal()
+    try:
+        state = db.query(SystemState).filter(SystemState.key == key).first()
+        return state.value if state else default
+    finally:
+        db.close()
+
+def set_system_state(key: str, value: str):
+    """Set or update a system state value"""
+    db = SessionLocal()
+    try:
+        state = db.query(SystemState).filter(SystemState.key == key).first()
+        if state:
+            state.value = value
+            state.updated_at = datetime.utcnow()
+        else:
+            state = SystemState(key=key, value=value)
+            db.add(state)
+        db.commit()
     finally:
         db.close()

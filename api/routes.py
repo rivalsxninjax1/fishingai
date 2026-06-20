@@ -201,7 +201,7 @@ async def get_threats(
         ).limit(limit).all()
 
         return [
-            ThreatListItem(
+             ThreatListItem(
                 id=t.id,
                 sender=t.sender,
                 subject=t.subject,
@@ -210,7 +210,8 @@ async def get_threats(
                 category=t.category or "Unknown",
                 summary=t.summary or "",
                 analyzed_at=t.analyzed_at,
-                analysis_time=t.analysis_time or 0
+                analysis_time=t.analysis_time or 0,
+                gmail_category=t.gmail_category or "primary"
             )
             for t in threats
         ]
@@ -251,6 +252,7 @@ async def get_threat_detail(threat_id: int):
             "reasons": threat.reasons,
             "recommended_action": threat.recommended_action,
             "matched_patterns": threat.matched_patterns,
+            "layer_scores": threat.layer_scores,
             "analysis_time": threat.analysis_time,
             "analyzed_at": threat.analyzed_at,
             "is_false_positive": threat.is_false_positive,

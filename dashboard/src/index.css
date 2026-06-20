@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  --color-bg-base: #0E1420;
+  --color-bg-surface: #161D2C;
+  --color-bg-rail: #0A0F18;
+  --color-border: #28324A;
+  --color-text-primary: #E8EBF2;
+  --color-text-muted: #7C8BA8;
+
+  --color-scam: #E5484D;
+  --color-scam-bg: #3A2226;
+  --color-scam-text: #F09595;
+
+  --color-suspicious: #F5A623;
+  --color-suspicious-bg: #3A2D14;
+  --color-suspicious-text: #EF9F27;
+
+  --color-safe: #3DD68C;
+  --color-safe-bg: #0F2A22;
+  --color-safe-text: #5DCAA5;
+}
+
+body {
+  background: var(--color-bg-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  margin: 0;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--color-bg-base); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-8px); background: var(--color-bg-rail); }
+  to { opacity: 1; transform: translateY(0); }
+}

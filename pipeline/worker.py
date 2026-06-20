@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import asyncio
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from celery import Celery
@@ -33,7 +34,7 @@ app.conf.update(
     worker_concurrency=2,          # 2 parallel workers on M1 8GB
     task_acks_late=True,           # Only mark done after completion
     task_reject_on_worker_lost=True, # Requeue if worker crashes
-    
+
     # Queue priority settings
     task_queues={
         "critical": {"exchange": "critical", "routing_key": "critical"},
@@ -41,7 +42,7 @@ app.conf.update(
         "normal":   {"exchange": "normal",   "routing_key": "normal"},
     },
     task_default_queue="normal",
-    
+
     # Retry settings
     task_max_retries=3,
     task_soft_time_limit=120,      # 2 min soft limit
@@ -50,6 +51,7 @@ app.conf.update(
 
 # ─────────────────────────────────────
 # CORE TASK — ANALYZE ONE EMAIL
+# Uses the FULL 7-LAYER ENGINE
 # ─────────────────────────────────────
 @app.task(
     bind=True,
@@ -61,32 +63,36 @@ def analyze_email_task(self, email_data: dict):
     """
     Celery task that:
     1. Takes one email from Redis queue
-    2. Runs full AI analysis
-    3. Saves result to PostgreSQL
+    2. Runs full 7-layer AI analysis
+    3. Saves result to PostgreSQL (including layer_scores + message_id)
     4. Creates alert if high risk
     """
-    from pipeline.analyzer import analyze_email
-    from models.database import save_threat, SessionLocal, Alert, EmailThreat
+    from models.database import save_threat, SessionLocal, Alert, is_trusted_sender
 
     subject = email_data.get("subject", "Unknown")
     sender = email_data.get("sender", "Unknown")
+    message_id = email_data.get("message_id", "")
 
     print(f"\n⚙️  Worker processing: {subject[:50]}")
     print(f"   From: {sender}")
 
     # Check whitelist before analyzing
-    from models.database import is_trusted_sender
     if is_trusted_sender(sender):
         print(f"✅ Trusted sender — skipping analysis: {sender}")
         return {"status": "skipped", "reason": "trusted_sender"}
 
     try:
+        from pipeline.risk_engine import analyze_all_layers
+
         # Track analysis time
         start_time = time.time()
 
-        # Run full AI analysis
-        report = analyze_email(email_data)
+        # Run full 7-LAYER analysis
+        report = asyncio.run(analyze_all_layers(email_data))
 
+        # Make sure message_id and full body flow through to the saved report
+        report["message_id"] = message_id
+        report["gmail_category"] = email_data.get("gmail_category", "primary")
         # Calculate time taken
         analysis_time = round(time.time() - start_time, 2)
         print(f"⏱️  Analysis completed in {analysis_time}s")
@@ -117,29 +123,28 @@ def analyze_email_task(self, email_data: dict):
             "verdict": report.get("verdict"),
             "risk_score": report.get("risk_score")
         }
+    
 
     except Exception as e:
         print(f"❌ Task failed: {e}")
-        # Retry up to 3 times
         raise self.retry(exc=e, countdown=10)
 
 
 # ─────────────────────────────────────
 # SCHEDULED TASK — FETCH NEW EMAILS
-# Runs every 60 seconds automatically
+# Runs every 15 seconds automatically
 # ─────────────────────────────────────
 @app.task(name="phishguard.fetch_and_queue_emails")
 def fetch_and_queue_emails():
     """
-    Scheduled task that:
-    1. Connects to Gmail
-    2. Fetches new unseen emails
-    3. Pushes each to Redis queue
-    4. Workers pick them up automatically
+    Scheduled task with CHECKPOINT system:
+    1. First run ever → analyze last 20 emails, save checkpoint
+    2. Every run after → only analyze emails newer than checkpoint
     """
-    from pipeline.email_reader import connect_to_gmail, fetch_latest_emails
+    from pipeline.email_reader import connect_to_gmail, fetch_emails_since_checkpoint
+    from models.database import get_system_state, set_system_state
 
-    print("\n📬 Fetching new emails...")
+    print("\n📬 Checking for new emails...")
 
     try:
         mail = connect_to_gmail()
@@ -147,17 +152,19 @@ def fetch_and_queue_emails():
             print("❌ Could not connect to Gmail")
             return
 
-        emails = fetch_latest_emails(mail, count=10)
+        last_uid = get_system_state("last_checked_uid", default=None)
+
+        emails, new_highest_uid = fetch_emails_since_checkpoint(
+            mail, last_uid=last_uid, first_run_limit=20
+        )
         mail.logout()
 
         if not emails:
-            print("📭 No new emails found")
-            return
+            print("📭 No new emails")
+            return {"queued": 0}
 
-        # Push each email to queue
         queued = 0
         for email_data in emails:
-            # Determine priority based on keywords
             subject = email_data.get("subject", "").lower()
             body = email_data.get("body", "").lower()
 
@@ -165,20 +172,19 @@ def fetch_and_queue_emails():
             is_urgent = any(kw in subject or kw in body for kw in urgent_keywords)
 
             if is_urgent:
-                # High priority queue
                 analyze_email_task.apply_async(
-                    args=[email_data],
-                    queue="high",
-                    priority=9
+                    args=[email_data], queue="high", priority=9
                 )
             else:
-                # Normal queue
                 analyze_email_task.apply_async(
-                    args=[email_data],
-                    queue="normal",
-                    priority=5
+                    args=[email_data], queue="normal", priority=5
                 )
             queued += 1
+
+        # Save checkpoint — next run resumes from here
+        if new_highest_uid:
+            set_system_state("last_checked_uid", new_highest_uid)
+            print(f"📍 Checkpoint updated: UID {new_highest_uid}")
 
         print(f"✅ Queued {queued} emails for analysis")
         return {"queued": queued}
@@ -189,12 +195,12 @@ def fetch_and_queue_emails():
 
 # ─────────────────────────────────────
 # CELERY BEAT SCHEDULE
-# Automatically runs fetch every 60s
+# Runs fetch every 15s
 # ─────────────────────────────────────
 app.conf.beat_schedule = {
-    "fetch-emails-every-60-seconds": {
+    "fetch-emails-every-15-seconds": {
         "task": "phishguard.fetch_and_queue_emails",
-        "schedule": 60.0,   # Every 60 seconds
+        "schedule": 15.0,
     },
 }
 
@@ -202,4 +208,4 @@ if __name__ == "__main__":
     print("🚀 PhishGuard Worker Starting...")
     print(f"📡 Redis: {REDIS_URL}")
     print(f"⚙️  Workers: 2 concurrent")
-    print(f"🕐 Fetch interval: 60 seconds")
+    print(f"🕐 Fetch interval: 15 seconds")

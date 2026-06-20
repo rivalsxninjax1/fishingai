@@ -38,6 +38,7 @@ class ThreatListItem(BaseModel):
     summary: str
     analyzed_at: datetime
     analysis_time: float
+    gmail_category: Optional[str] = "primary"
 
 class DashboardStats(BaseModel):
     total_emails: int
