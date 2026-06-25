@@ -13,31 +13,21 @@ import asyncio
 
 TRIGGERS = {
 
-
     # BEC — BUSINESS EMAIL COMPROMISE
-# Most financially damaging attack type
-# FBI: $2.8 billion lost in 2024
     "bec_signals": {
-        "weight": 15,  # Highest weight of any trigger
+        "weight": 15,
         "patterns": [
-            # Bank account change — #1 BEC signal
             r'\b(changed?|updated?|new)\b.{0,30}\b(bank|account|banking)\b',
             r'\bnew (bank(ing)? )?(account|details|information)\b',
             r'\bupdate your (records|banking|account)\b',
             r'\bdisregard.{0,20}(previous|old|former)\b',
-
-            # Wire transfer requests
             r'\b(process|make|send|transfer).{0,20}(payment|transfer|wire)\b',
             r'\bwire (transfer|the funds|money)\b',
             r'\baccount (number|details):.{0,50}\d{6,}\b',
             r'\brouting.{0,20}\d{6,}\b',
-
-            # False meeting reference
             r'\b(further to|following up on|as (per|discussed|agreed))\b.{0,30}\b(meeting|conversation|call|discussion)\b',
             r'\bas (we |previously )?discussed\b',
             r'\bper our (conversation|agreement|discussion)\b',
-
-            # Urgency + payment combo
             r'\bprocess (this |the payment )?(today|immediately|urgently|asap)\b',
             r'\bdue (today|tonight|this evening|by end of day)\b',
             r'\bvendor payment\b',
@@ -45,8 +35,7 @@ TRIGGERS = {
         ]
     },
 
-    # URGENCY — most common phishing trigger
-    # "urgency short-circuits rational evaluation" — research 2024
+    # URGENCY
     "urgency": {
         "weight": 8,
         "patterns": [
@@ -56,12 +45,11 @@ TRIGGERS = {
             r'\blast chance\b', r'\bact now\b',
             r'\bdo not delay\b', r'\btime (is running out|sensitive)\b',
             r'\bdeadline\b', r'\btoday only\b',
-            # Nepali context urgency
             r'\bतुरुन्त\b', r'\bअत्यावश्यक\b',
         ]
     },
 
-    # FEAR — threats of negative consequences
+    # FEAR
     "fear": {
         "weight": 9,
         "patterns": [
@@ -76,11 +64,10 @@ TRIGGERS = {
         ]
     },
 
-    # AUTHORITY — impersonating figures of power
+    # AUTHORITY
     "authority": {
         "weight": 10,
         "patterns": [
-            # Nepal government authority
             r'\bministry\b', r'\bgovernment of nepal\b',
             r'\bnepal rastra bank\b', r'\bnrb\b',
             r'\binland revenue\b', r'\bird nepal\b',
@@ -89,15 +76,13 @@ TRIGGERS = {
             r'\bnepal police\b', r'\barmy\b',
             r'\bjoint secretary\b', r'\bsecretary\b',
             r'\bdirector general\b',
-            # Global authority
             r'\bceo\b', r'\bchief executive\b',
             r'\bmanaging director\b', r'\bpresident\b',
             r'\bfbi\b', r'\binterpol\b', r'\bpolice\b',
         ]
     },
 
-    # SECRECY — asking to keep things private
-    # Classic BEC attack pattern
+    # SECRECY
     "secrecy": {
         "weight": 10,
         "patterns": [
@@ -109,7 +94,7 @@ TRIGGERS = {
         ]
     },
 
-    # FINANCIAL BAIT — promising money
+    # FINANCIAL BAIT
     "financial_bait": {
         "weight": 7,
         "patterns": [
@@ -120,12 +105,11 @@ TRIGGERS = {
             r'\bfund(s)?\b.*\btransfer\b',
             r'\bcommission\b', r'\breward\b',
             r'\bbonus\b', r'\ballocation\b',
-            # Nepal specific
             r'\bprovident fund\b', r'\bnppf\b',
         ]
     },
 
-    # CREDENTIAL HARVESTING — asking for sensitive info
+    # CREDENTIAL HARVESTING
     "credential_request": {
         "weight": 10,
         "patterns": [
@@ -137,14 +121,13 @@ TRIGGERS = {
             r'\bsocial security\b',
             r'\bcard (number|details|cvv)\b',
             r'\bexpirat(ion|y) date\b',
-            # Nepal digital wallets
             r'\besewa (pin|password|otp)\b',
             r'\bkhalti (mpin|password|otp)\b',
             r'\bconnectips (password|credentials)\b',
         ]
     },
 
-    # IMPERSONATION SIGNALS — fake identity markers
+    # IMPERSONATION SIGNALS
     "impersonation": {
         "weight": 8,
         "patterns": [
@@ -157,7 +140,7 @@ TRIGGERS = {
         ]
     },
 
-    # PAYMENT PRESSURE — forcing payment
+    # PAYMENT PRESSURE
     "payment_pressure": {
         "weight": 9,
         "patterns": [
@@ -172,6 +155,25 @@ TRIGGERS = {
             r'\badvance (payment|fee)\b',
         ]
     },
+}
+
+# ─────────────────────────────────────────────────────
+# KNOWN LEGITIMATE DOMAINS
+# Defined at module level — used inside run()
+# ─────────────────────────────────────────────────────
+LEGITIMATE_DOMAINS = {
+    "tiktok.com", "google.com", "apple.com",
+    "microsoft.com", "linkedin.com", "github.com",
+    "amazon.com", "paypal.com", "netflix.com",
+    "spotify.com", "facebook.com", "instagram.com",
+    "twitter.com", "x.com", "adobe.com",
+    "dropbox.com", "slack.com", "zoom.us",
+    "flexjobs.com", "email.flexjobs.com",
+    "manutd.com", "emails.manutd.com",
+    "airdroid.com", "creatorworld.io",
+    "tryhackme.com", "freecodecamp.org",
+    "esewa.com.np", "khalti.com", "fonepay.com",
+    "nabil.com.np", "everestbank.com.np",
 }
 
 
@@ -190,7 +192,7 @@ def analyze_triggers(text: str) -> dict:
 
         if matches:
             found_triggers[trigger_name] = {
-                "matches": list(set(matches))[:3],  # Max 3 examples
+                "matches": list(set(matches))[:3],
                 "weight": trigger_data["weight"],
                 "count": len(matches)
             }
@@ -204,43 +206,34 @@ def analyze_triggers(text: str) -> dict:
 
 
 def check_structural_anomalies(email_data: dict) -> dict:
-    """
-    Check email structure for manipulation signs
-    """
+    """Check email structure for manipulation signs"""
     subject = email_data.get("subject", "")
     body = email_data.get("body", "")
-    sender = email_data.get("sender", "")
 
     anomalies = []
 
-    # ALL CAPS subject — panic inducing
     if subject.isupper() and len(subject) > 5:
         anomalies.append("Subject in ALL CAPS — designed to create panic")
 
-    # Excessive punctuation
     if subject.count("!") > 1:
         anomalies.append("Multiple exclamation marks in subject")
 
-    # Generic greeting — not personalized
-    generic_greetings = ["dear user", "dear customer", "dear valued",
-                          "dear account holder", "dear sir/madam",
-                          "dear officer", "dear employee"]
+    generic_greetings = [
+        "dear user", "dear customer", "dear valued",
+        "dear account holder", "dear sir/madam",
+        "dear officer", "dear employee"
+    ]
     body_lower = body.lower()
     for greeting in generic_greetings:
         if greeting in body_lower:
             anomalies.append(f"Generic non-personalized greeting: '{greeting}'")
             break
 
-    # Reply-to different from sender
-    # (checked in email headers in production)
-
-    # Very short body with link — classic phishing
     word_count = len(body.split())
     url_count = len(re.findall(r'http[s]?://', body))
     if word_count < 50 and url_count > 0:
         anomalies.append("Very short email body with links — classic phishing pattern")
 
-    # Excessive links
     if url_count > 3:
         anomalies.append(f"Unusual number of links: {url_count}")
 
@@ -255,9 +248,29 @@ async def run(email_data: dict) -> dict:
 
     subject = email_data.get("subject", "")
     body = email_data.get("body", "")
+    sender = email_data.get("sender", "")
     full_text = f"{subject} {body}"
 
+    # ─────────────────────────────────────────
+    # Determine sender legitimacy
+    # Reduces sensitivity for known real companies
+    # ─────────────────────────────────────────
+    sender_email = sender
+    if "<" in sender:
+        sender_email = sender.split("<")[1].replace(">", "").strip()
+    sender_domain = sender_email.split("@")[-1].lower() if "@" in sender_email else ""
+
+    is_known_legitimate = any(
+        sender_domain == d or sender_domain.endswith("." + d)
+        for d in LEGITIMATE_DOMAINS
+    )
+
+    # Legitimate senders get halved trigger weights
+    sensitivity_multiplier = 0.5 if is_known_legitimate else 1.0
+
+    # ─────────────────────────────────────────
     # Run analysis
+    # ─────────────────────────────────────────
     trigger_analysis = analyze_triggers(full_text)
     structural = check_structural_anomalies(email_data)
 
@@ -265,36 +278,33 @@ async def run(email_data: dict) -> dict:
     risk_points = 0
     findings = []
 
-    # Score based on triggers found
     trigger_count = trigger_analysis["trigger_count"]
 
     if trigger_count >= 4:
-        risk_points += 20
+        risk_points += int(20 * sensitivity_multiplier)
         findings.append(
             f"🚨 HIGHLY MANIPULATIVE: {trigger_count} psychological "
             f"manipulation tactics detected simultaneously"
         )
     elif trigger_count == 3:
-        risk_points += 14
+        risk_points += int(14 * sensitivity_multiplier)
         findings.append(f"⚠️ Multiple manipulation tactics: {trigger_count} triggers found")
     elif trigger_count == 2:
-        risk_points += 9
+        risk_points += int(9 * sensitivity_multiplier)
         findings.append(f"⚠️ Manipulation tactics detected: {trigger_count} triggers")
     elif trigger_count == 1:
-        risk_points += 4
+        risk_points += int(4 * sensitivity_multiplier)
 
-    # Add findings for each trigger
     for trigger_name, data in trigger_analysis["triggers_found"].items():
         findings.append(
             f"   • {trigger_name.upper()}: detected '{data['matches'][0]}'"
         )
 
-    # Structural anomalies
     risk_points += min(structural["anomaly_count"] * 2, 5)
     for anomaly in structural["anomalies"]:
         findings.append(f"⚠️ {anomaly}")
 
-    # Special case: credential request is always high risk
+    # Special overrides — always high risk regardless of sender
     if "credential_request" in trigger_analysis["triggers_found"]:
         risk_points = max(risk_points, 18)
         findings.insert(0, "🚨 EMAIL IS REQUESTING SENSITIVE CREDENTIALS")

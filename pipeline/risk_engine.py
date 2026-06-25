@@ -106,7 +106,7 @@ def calculate_verdict(total_score: int, layer_results: list) -> tuple:
     # ── STANDARD THRESHOLDS ──
     if total_score >= 65:
         return "SCAM", "HIGH"
-    elif total_score >= 35:
+    elif total_score >= 45:
         return "SUSPICIOUS", "MEDIUM"
     elif total_score < 15:
         return "SAFE", "HIGH"

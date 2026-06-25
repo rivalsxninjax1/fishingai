@@ -90,6 +90,44 @@ async def run(email_data: dict) -> dict:
 
     sender = email_data.get("sender", "")
 
+        # Known legitimate domains — never flag as known threat
+    # even if they appear in history with wrong scores
+    LEGITIMATE_DOMAINS = {
+        "tiktok.com", "google.com", "apple.com",
+        "microsoft.com", "linkedin.com", "github.com",
+        "amazon.com", "paypal.com", "netflix.com",
+        "facebook.com", "instagram.com", "twitter.com",
+        "flexjobs.com", "email.flexjobs.com",
+        "manutd.com", "emails.manutd.com",
+        "airdroid.com", "creatorworld.io",
+        "tryhackme.com", "freecodecamp.org",
+        "esewa.com.np", "khalti.com",
+        "nabil.com.np", "everestbank.com.np",
+    }
+
+    # Extract clean domain
+    sender_email = sender
+    if "<" in sender:
+        sender_email = sender.split("<")[1].replace(">", "").strip()
+    sender_domain = sender_email.split("@")[-1].lower() if "@" in sender_email else ""
+
+    is_known_legitimate = any(
+        sender_domain == d or sender_domain.endswith("." + d)
+        for d in LEGITIMATE_DOMAINS
+    )
+
+    # Skip history check entirely for known legitimate domains
+    if is_known_legitimate:
+        return {
+            "layer": "Sender Behaviour",
+            "risk_points": 0,
+            "max_points": 10,
+            "findings": [f"✅ Verified legitimate domain: {sender_domain}"],
+            "details": {"legitimate": True},
+            "early_exit": False
+        }
+
+
     # Run checks
     history = await check_sender_history(sender)
     reply_check = check_reply_to_mismatch(email_data)

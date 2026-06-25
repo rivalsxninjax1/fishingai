@@ -311,3 +311,12 @@ def search_patterns(query_text, n_results=3):
 
 if __name__ == "__main__":
     build_database()
+
+def search_patterns_with_distance(query_text, n_results=3):
+    """Search database and return distances for confidence scoring"""
+    results = collection.query(
+        query_texts=[query_text],
+        n_results=n_results,
+        include=["documents", "metadatas", "distances"]
+    )
+    return results
