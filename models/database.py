@@ -73,6 +73,7 @@ class EmailThreat(Base):
     analysis_time   = Column(Float)        # How long analysis took
     model_used      = Column(String(100), default="llama3.1:8b")
     is_false_positive = Column(Boolean, default=False)
+    is_acknowledged   = Column(Boolean, default=False)
     
     # Organization (for multi-org support)
     organization    = Column(String(200), default="default")

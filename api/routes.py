@@ -386,3 +386,112 @@ async def get_live_feed(organization: str = "default"):
         ]
     finally:
         db.close()
+
+@router.get("/dashboard/attention")
+async def get_attention_state(organization: str = "default"):
+    """
+    The core endpoint for the attention-first dashboard.
+    Returns either:
+    - The single most critical unresolved threat (if any exists)
+    - An "all clear" state with summary stats
+    """
+    db = SessionLocal()
+    try:
+        from sqlalchemy import func
+
+        # Find the most critical unresolved threat
+        # Priority: SCAM > SUSPICIOUS, then highest risk score, then most recent
+        critical_threat = db.query(EmailThreat).filter(
+            EmailThreat.is_acknowledged == False,
+            EmailThreat.organization == organization,
+            EmailThreat.verdict.in_(["SCAM", "SUSPICIOUS"]),
+            EmailThreat.is_false_positive == False,
+            EmailThreat.gmail_category == "primary"
+        ).order_by(
+            EmailThreat.risk_score.desc(),
+            EmailThreat.analyzed_at.desc()
+        ).first()
+
+        # Count all unresolved threats needing attention
+        attention_count = db.query(EmailThreat).filter(
+            EmailThreat.is_acknowledged == False,
+            EmailThreat.organization == organization,
+            EmailThreat.verdict.in_(["SCAM", "SUSPICIOUS"]),
+            EmailThreat.is_false_positive == False,
+            EmailThreat.gmail_category == "primary"
+        ).count()
+
+        # Total scanned today
+        from datetime import datetime, timedelta
+        today_start = datetime.utcnow().replace(hour=0, minute=0, second=0)
+        scanned_today = db.query(EmailThreat).filter(
+            EmailThreat.organization == organization,
+            EmailThreat.analyzed_at >= today_start
+        ).count()
+
+        # Last threat blocked (most recent SCAM, regardless of resolved)
+        last_threat = db.query(EmailThreat).filter(
+            EmailThreat.organization == organization,
+            EmailThreat.verdict == "SCAM"
+        ).order_by(EmailThreat.analyzed_at.desc()).first()
+
+        last_threat_text = "No threats yet"
+        if last_threat:
+            delta = datetime.utcnow() - last_threat.analyzed_at
+            if delta.days > 0:
+                last_threat_text = f"{delta.days} day{'s' if delta.days > 1 else ''} ago"
+            elif delta.seconds > 3600:
+                hrs = delta.seconds // 3600
+                last_threat_text = f"{hrs} hour{'s' if hrs > 1 else ''} ago"
+            else:
+                mins = max(delta.seconds // 60, 1)
+                last_threat_text = f"{mins} minute{'s' if mins > 1 else ''} ago"
+
+        if critical_threat:
+            return {
+                "status": "needs_attention",
+                "threat": {
+                    "id": critical_threat.id,
+                    "subject": critical_threat.subject,
+                    "sender": critical_threat.sender,
+                    "verdict": critical_threat.verdict,
+                    "risk_score": critical_threat.risk_score,
+                    "summary": critical_threat.summary,
+                    "top_reason": (critical_threat.reasons or [""])[0] if critical_threat.reasons else "",
+                    "analyzed_at": critical_threat.analyzed_at,
+                },
+                "attention_count": attention_count,
+                "scanned_today": scanned_today,
+                "last_threat_blocked": last_threat_text,
+            }
+        else:
+            return {
+                "status": "all_clear",
+                "threat": None,
+                "attention_count": 0,
+                "scanned_today": scanned_today,
+                "last_threat_blocked": last_threat_text,
+            }
+    finally:
+        db.close()
+
+
+@router.post("/threats/{threat_id}/handled")
+async def mark_handled(threat_id: int):
+    db = SessionLocal()
+    try:
+        threat = db.query(EmailThreat).filter(EmailThreat.id == threat_id).first()
+        if not threat:
+            raise HTTPException(status_code=404, detail="Threat not found")
+        threat.is_acknowledged = True
+        db.commit()
+
+        alert = db.query(Alert).filter(Alert.email_threat_id == threat_id).first()
+        if alert:
+            alert.is_resolved = True
+            alert.resolved_at = datetime.utcnow()
+            db.commit()
+
+        return {"message": "Marked as handled", "id": threat_id}
+    finally:
+        db.close()
