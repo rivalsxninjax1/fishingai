@@ -25,41 +25,30 @@ EARLY_EXIT_THRESHOLD = 75
 # ─────────────────────────────────────────────────────
 
 def calculate_verdict(total_score: int, layer_results: list) -> tuple:
-    """
-    Smart verdict that considers:
-    1. Total score
-    2. Critical signal combinations
-    3. RAG + AI agreement
-    4. BEC specific signals
-    """
     all_findings = []
     for r in layer_results:
         all_findings.extend(r.get("findings", []))
     findings_text = " ".join(all_findings).lower()
 
-    # ── CRITICAL OVERRIDES ──
-    # These combinations always = SCAM regardless of score
-
-    # Spoofing confirmed — always scam
     spoofing_detected = (
         "spoofing" in findings_text or
         "homograph" in findings_text or
         "lookalike" in findings_text
     )
 
-    # Known threat actor seen before
     known_threat = "known threat" in findings_text
 
-    # BEC signals — bank account change + payment
+    # BEC — stricter keywords to avoid false positives
     bec_detected = (
-        "bec" in findings_text or
+        "business email compromise" in findings_text or
         (
             any(kw in findings_text for kw in [
-                "changed", "new bank", "new account",
+                "new bank", "new account",
                 "disregard", "update your records"
             ]) and
             any(kw in findings_text for kw in [
-                "transfer", "payment", "wire", "process"
+                "wire", "transfer funds", "process payment",
+                "process today", "process immediately"
             ])
         ) or
         (
@@ -68,9 +57,8 @@ def calculate_verdict(total_score: int, layer_results: list) -> tuple:
         )
     )
 
-    # RAG matched BEC/CEO/Invoice + AI also flagged
     rag_flagged = any(
-        "pattern match" in f.lower() and
+        "strong pattern match" in f.lower() and
         any(threat in f.lower() for threat in [
             "bec", "ceo", "invoice", "impersonation",
             "advance fee", "nepal government"
@@ -80,15 +68,35 @@ def calculate_verdict(total_score: int, layer_results: list) -> tuple:
 
     ai_flagged = any(
         r.get("layer") == "AI Analysis" and
-        r.get("risk_points", 0) >= 5
+        r.get("risk_points", 0) >= 5 and
+        not r.get("early_exit", False)
         for r in layer_results
     )
 
-    # Credential harvesting detected
     credential_theft = "requesting sensitive credentials" in findings_text
-
-    # Fake Nepal government domain
     fake_gov = "fake nepal government" in findings_text
+
+    # Job scam with upfront fee payment request
+    job_scam_detected = any(kw in findings_text for kw in [
+        "job scam", "placement fee", "visa fee",
+        "visa processing", "medical clearance fee",
+        "confirm your placement", "confirm your position"
+    ])
+
+    # Nepal tax/government threat with arrest/legal language
+    nepal_gov_threat = (
+        any(kw in findings_text for kw in [
+            "ird nepal", "inland revenue", "tax scam",
+            "nepal tax", "unpaid tax",
+        ]) or
+        (
+            any(kw in findings_text for kw in ["arrest", "criminal proceedings", "legal action"]) and
+            any(kw in findings_text for kw in ["pay", "esewa", "fonepay", "fine", "penalty"])
+        )
+    )
+
+    if nepal_gov_threat and total_score >= 25:
+        return "SCAM", "HIGH"
 
     # ── APPLY OVERRIDES ──
     if spoofing_detected or known_threat or fake_gov:
@@ -100,7 +108,34 @@ def calculate_verdict(total_score: int, layer_results: list) -> tuple:
     if credential_theft:
         return "SCAM", "HIGH"
 
-    if rag_flagged and ai_flagged and total_score >= 20:
+    if job_scam_detected and total_score >= 25:
+        return "SCAM", "HIGH"
+
+    if rag_flagged and ai_flagged and total_score >= 50:
+        return "SCAM", "HIGH"
+    
+    # Gift card fraud — CEO asking for gift cards + secrecy
+    gift_card_fraud = (
+        "gift card" in findings_text and
+        any(kw in findings_text for kw in [
+            "secrecy", "confidential", "do not discuss",
+            "between us", "do not tell"
+        ])
+    )
+
+    if gift_card_fraud and total_score >= 25:
+        return "SCAM", "HIGH"
+
+    # Low score but Llama confirmed SCAM
+    llama_confirmed_scam = any(
+        r.get("layer") == "AI Analysis" and
+        r.get("risk_points", 0) >= 5 and
+        not r.get("early_exit", False) and
+        "scam" in str(r.get("findings", "")).lower()
+        for r in layer_results
+    )
+
+    if llama_confirmed_scam and total_score >= 30:
         return "SCAM", "HIGH"
 
     # ── STANDARD THRESHOLDS ──

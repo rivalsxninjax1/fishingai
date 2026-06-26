@@ -148,6 +148,10 @@ TRIGGERS = {
             r'\bgift card(s)?\b',
             r'\bpay (immediately|now|urgently|today)\b',
             r'\bpayment (overdue|required|pending|due)\b',
+            r'\bplacement fee\b', r'\bvisa (fee|processing)\b',
+            r'\bmedical (fee|clearance fee)\b',
+            r'\bregistration fee\b.*\bjob\b',
+            r'\bconfirm your (placement|position|seat)\b',
             r'\btransfer (funds|money|amount)\b',
             r'\besewa number\b', r'\bkhalti number\b',
             r'\bfonepay\b',
@@ -296,9 +300,22 @@ async def run(email_data: dict) -> dict:
         risk_points += int(4 * sensitivity_multiplier)
 
     for trigger_name, data in trigger_analysis["triggers_found"].items():
-        findings.append(
-            f"   • {trigger_name.upper()}: detected '{data['matches'][0]}'"
-        )
+            # Use friendly names instead of internal key names
+            friendly_names = {
+                "bec_signals": "Business Email Compromise signals",
+                "urgency": "Urgency tactics",
+                "fear": "Fear tactics",
+                "authority": "Authority impersonation",
+                "secrecy": "Secrecy request",
+                "financial_bait": "Financial bait",
+                "credential_request": "Credential harvesting",
+                "impersonation": "Impersonation signals",
+                "payment_pressure": "Payment pressure",
+            }
+            friendly = friendly_names.get(trigger_name, trigger_name.upper())
+            findings.append(
+                f"   • {friendly}: detected '{data['matches'][0]}'"
+            )
 
     risk_points += min(structural["anomaly_count"] * 2, 5)
     for anomaly in structural["anomalies"]:

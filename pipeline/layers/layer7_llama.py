@@ -30,8 +30,12 @@ async def run(email_data: dict, previous_results: list = None) -> dict:
                 for finding in result["findings"][:3]:
                     layer_context += f"  {finding}\n"
 
-    prompt = f"""You are PhishGuard AI, an expert email security system 
-specialized in Nepal government and enterprise email threat detection.
+    prompt = f"""You are PhishGuard, an expert email security AI for Nepal government offices.
+
+CRITICAL INSTRUCTION: Only flag emails as SCAM if they are ACTIVELY trying to steal 
+money, credentials, or personal information. Legitimate account notifications, 
+newsletters, and automated alerts from real companies are NOT scams even if they 
+mention account changes or security updates.
 
 FINDINGS FROM SECURITY LAYERS:
 {layer_context}
@@ -39,13 +43,12 @@ FINDINGS FROM SECURITY LAYERS:
 EMAIL TO ANALYZE:
 From: {sender}
 Subject: {subject}
-Body: {body[:800]}
+Body: {body[:400]}
 
-Based on the security layer findings above, provide your final analysis.
 Respond in EXACTLY this format:
 
 VERDICT: [SAFE / SUSPICIOUS / SCAM]
-CATEGORY: [Phishing / BEC / Advance Fee / Impersonation / Malware / LEGITIMATE]
+CATEGORY: [Phishing / BEC / Advance Fee / Impersonation / Malware / Notification / LEGITIMATE]
 SUMMARY: [One sentence — why this is or isn't a threat]
 KEY_REASON: [The single most important reason for your verdict]"""
 
@@ -84,7 +87,7 @@ KEY_REASON: [The single most important reason for your verdict]"""
 
     return {
         "layer": "AI Analysis",
-        "risk_points": 5 if verdict in ["SCAM", "SUSPICIOUS"] else 0,
+        "risk_points": 5 if verdict == "SCAM" else 3 if verdict == "SUSPICIOUS" else 0,
         "max_points": 5,
         "findings": [f"🤖 AI: {summary}", f"   Key reason: {key_reason}"],
         "verdict": verdict,

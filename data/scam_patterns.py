@@ -220,19 +220,26 @@ scam_patterns = [
     # ─────────────────────────────────────────
     # 8. JOB / EMPLOYMENT SCAMS
     # ─────────────────────────────────────────
-    {
+ {
         "id": "job_001",
-        "text": "You have been selected for a high paying job in Qatar. Salary $3000/month. Pay NPR 80,000 visa processing fee to confirm your placement immediately.",
+        "text": "You have been selected for a high paying job in Qatar. Salary NPR 80,000 per month plus accommodation. Pay NPR 80,000 visa processing fee and medical clearance fee to confirm your placement immediately via eSewa.",
         "category": "Job Scam",
-        "risk": "HIGH",
-        "explanation": "Fake foreign employment scam common in Nepal targeting job seekers"
+        "risk": "CRITICAL",
+        "explanation": "Fake foreign employment scam targeting Nepal job seekers. Requires upfront payment via eSewa — legitimate agencies never require personal payment."
     },
     {
         "id": "job_002",
-        "text": "Work from home opportunity. Earn NPR 50,000 per month by working just 2 hours daily. Registration fee of NPR 5,000 required to get started.",
+        "text": "Work from home opportunity. Earn NPR 50,000 per month by working just 2 hours daily. Registration fee of NPR 5,000 required to get started. Limited seats available.",
         "category": "Job Scam",
         "risk": "HIGH",
         "explanation": "Fake work from home scheme requiring upfront registration fee"
+    },
+    {
+        "id": "job_003",
+        "text": "Urgent job placement in UAE Dubai Qatar. High salary guaranteed. Pay visa fee medical fee insurance fee immediately to secure your position. Limited seats. Pay via eSewa fonepay.",
+        "category": "Job Scam",
+        "risk": "CRITICAL",
+        "explanation": "Foreign job scam requiring multiple upfront fees. Legitimate foreign employment never requires personal fee payment before joining."
     },
 
     # ─────────────────────────────────────────
