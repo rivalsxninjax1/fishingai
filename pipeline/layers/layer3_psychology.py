@@ -301,8 +301,8 @@ async def run(email_data: dict) -> dict:
 
     for trigger_name, data in trigger_analysis["triggers_found"].items():
             # Use friendly names instead of internal key names
-            friendly_names = {
-                "bec_signals": "Business Email Compromise signals",
+        friendly_names = {
+                "bec_signals": "BEC trigger detected",
                 "urgency": "Urgency tactics",
                 "fear": "Fear tactics",
                 "authority": "Authority impersonation",
@@ -312,10 +312,10 @@ async def run(email_data: dict) -> dict:
                 "impersonation": "Impersonation signals",
                 "payment_pressure": "Payment pressure",
             }
-            friendly = friendly_names.get(trigger_name, trigger_name.upper())
-            findings.append(
-                f"   • {friendly}: detected '{data['matches'][0]}'"
-            )
+        friendly = friendly_names.get(trigger_name, trigger_name.upper())
+        findings.append(
+            f"   • {friendly}: detected '{data['matches'][0]}'"
+        )
 
     risk_points += min(structural["anomaly_count"] * 2, 5)
     for anomaly in structural["anomalies"]:
@@ -341,6 +341,7 @@ async def run(email_data: dict) -> dict:
         },
         "early_exit": (
             "credential_request" in trigger_analysis["triggers_found"] and
-            "authority" in trigger_analysis["triggers_found"]
+            "authority" in trigger_analysis["triggers_found"] and
+            not is_known_legitimate  # Never early exit for known legitimate senders
         )
     }

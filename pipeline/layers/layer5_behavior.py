@@ -123,7 +123,7 @@ async def run(email_data: dict) -> dict:
             "risk_points": 0,
             "max_points": 10,
             "findings": [f"✅ Verified legitimate domain: {sender_domain}"],
-            "details": {"legitimate": True},
+            "details": {"legitimate": True, "history": {}},
             "early_exit": False
         }
 

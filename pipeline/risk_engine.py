@@ -23,132 +23,85 @@ EARLY_EXIT_THRESHOLD = 75
 # SMART VERDICT CALCULATION
 # Not just total score — considers critical signals
 # ─────────────────────────────────────────────────────
-
 def calculate_verdict(total_score: int, layer_results: list) -> tuple:
-    all_findings = []
-    for r in layer_results:
-        all_findings.extend(r.get("findings", []))
-    findings_text = " ".join(all_findings).lower()
 
-    spoofing_detected = (
-        "spoofing" in findings_text or
-        "homograph" in findings_text or
-        "lookalike" in findings_text
-    )
+    layer_map = {r.get("layer", ""): r for r in layer_results}
+    auth = layer_map.get("Authentication", {})
+    domain = layer_map.get("Domain Intelligence", {})
+    behavior = layer_map.get("Sender Behaviour", {})
 
-    known_threat = "known threat" in findings_text
+    auth_details = auth.get("details", {})
+    domain_details = domain.get("details", {})
+    behavior_details = behavior.get("details", {})
 
-    # BEC — stricter keywords to avoid false positives
-    bec_detected = (
-        "business email compromise" in findings_text or
-        (
-            any(kw in findings_text for kw in [
-                "new bank", "new account",
-                "disregard", "update your records"
-            ]) and
-            any(kw in findings_text for kw in [
-                "wire", "transfer funds", "process payment",
-                "process today", "process immediately"
-            ])
-        ) or
-        (
-            "account number" in findings_text and
-            "routing" in findings_text
-        )
-    )
+    is_legitimate = behavior_details.get("legitimate", False)
 
-    rag_flagged = any(
-        "strong pattern match" in f.lower() and
-        any(threat in f.lower() for threat in [
-            "bec", "ceo", "invoice", "impersonation",
-            "advance fee", "nepal government"
-        ])
-        for f in all_findings
-    )
+    # Hard structural signals
+    spoofing = auth_details.get("spoofing", {}).get("spoofing_detected", False)
+    homograph = domain_details.get("homograph", {}).get("has_homograph", False)
+    lookalike = domain_details.get("lookalike", {}).get("is_lookalike", False)
+    fake_nepal_gov = domain_details.get("tld_check", {}).get("is_fake_nepal_gov", False)
 
-    ai_flagged = any(
-        r.get("layer") == "AI Analysis" and
-        r.get("risk_points", 0) >= 5 and
-        not r.get("early_exit", False)
+    # ── ABSOLUTE SAFETY NET ──
+    # If score is very low AND no hard structural threats
+    # Nothing can make this SCAM — not even Llama
+    no_structural_threat = not (spoofing or homograph or lookalike or fake_nepal_gov)
+    if total_score <= 10 and no_structural_threat:
+        return "SAFE", "HIGH"
+
+    # ── REST OF LOGIC CONTINUES ──
+
+    # ── LLAMA IS PRIMARY JUDGE ──
+    llama_verdict = ai_details.get("verdict", "UNKNOWN")
+    llama_confidence = ai_details.get("confidence", "LOW")
+    llama_ran = not ai.get("early_exit", False) and llama_verdict != "UNKNOWN"
+
+    # If Llama ran and gave a confident verdict — trust it
+    if llama_ran:
+        if llama_verdict == "SCAM":
+            return "SCAM", "HIGH"
+        elif llama_verdict == "SUSPICIOUS":
+            if total_score >= 30:
+                return "SUSPICIOUS", "MEDIUM"
+            else:
+                return "SAFE", "MEDIUM"
+        elif llama_verdict == "SAFE":
+            # Even if Llama says safe, check for critical combinations
+            has_credential = "credential_request" in triggers
+            has_authority = "authority" in triggers
+            has_secrecy = "secrecy" in triggers
+            has_payment = "payment_pressure" in triggers
+
+            # These combinations override even Llama's SAFE verdict
+            if has_credential and has_authority and not is_legitimate:
+                return "SCAM", "HIGH"
+            if has_secrecy and has_payment and not is_legitimate:
+                return "SCAM", "HIGH"
+
+            return "SAFE", "HIGH" if total_score < 15 else "MEDIUM"
+
+  
+    # ── FALLBACK — Llama skipped (early exit) or failed ──
+    # Check if early exit was triggered — means layers already confirmed threat
+    early_exit_triggered = any(
+        r.get("early_exit", False) and r.get("layer") == "AI Analysis"
         for r in layer_results
     )
 
-    credential_theft = "requesting sensitive credentials" in findings_text
-    fake_gov = "fake nepal government" in findings_text
-
-    # Job scam with upfront fee payment request
-    job_scam_detected = any(kw in findings_text for kw in [
-        "job scam", "placement fee", "visa fee",
-        "visa processing", "medical clearance fee",
-        "confirm your placement", "confirm your position"
-    ])
-
-    # Nepal tax/government threat with arrest/legal language
-    nepal_gov_threat = (
-        any(kw in findings_text for kw in [
-            "ird nepal", "inland revenue", "tax scam",
-            "nepal tax", "unpaid tax",
-        ]) or
-        (
-            any(kw in findings_text for kw in ["arrest", "criminal proceedings", "legal action"]) and
-            any(kw in findings_text for kw in ["pay", "esewa", "fonepay", "fine", "penalty"])
-        )
-    )
-
-    if nepal_gov_threat and total_score >= 25:
+    if early_exit_triggered:
         return "SCAM", "HIGH"
 
-    # ── APPLY OVERRIDES ──
-    if spoofing_detected or known_threat or fake_gov:
+    # Normal score based fallback
+    if total_score >= 55:
         return "SCAM", "HIGH"
-
-    if bec_detected:
-        return "SCAM", "HIGH"
-
-    if credential_theft:
-        return "SCAM", "HIGH"
-
-    if job_scam_detected and total_score >= 25:
-        return "SCAM", "HIGH"
-
-    if rag_flagged and ai_flagged and total_score >= 50:
-        return "SCAM", "HIGH"
-    
-    # Gift card fraud — CEO asking for gift cards + secrecy
-    gift_card_fraud = (
-        "gift card" in findings_text and
-        any(kw in findings_text for kw in [
-            "secrecy", "confidential", "do not discuss",
-            "between us", "do not tell"
-        ])
-    )
-
-    if gift_card_fraud and total_score >= 25:
-        return "SCAM", "HIGH"
-
-    # Low score but Llama confirmed SCAM
-    llama_confirmed_scam = any(
-        r.get("layer") == "AI Analysis" and
-        r.get("risk_points", 0) >= 5 and
-        not r.get("early_exit", False) and
-        "scam" in str(r.get("findings", "")).lower()
-        for r in layer_results
-    )
-
-    if llama_confirmed_scam and total_score >= 30:
-        return "SCAM", "HIGH"
-
-    # ── STANDARD THRESHOLDS ──
-    if total_score >= 65:
-        return "SCAM", "HIGH"
-    elif total_score >= 45:
+    elif total_score >= 35:
         return "SUSPICIOUS", "MEDIUM"
     elif total_score < 15:
         return "SAFE", "HIGH"
     else:
         return "SAFE", "MEDIUM"
-
-
+    
+    
 def get_recommended_action(verdict: str, score: int) -> str:
     if verdict == "SCAM":
         return (
