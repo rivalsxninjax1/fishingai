@@ -24,65 +24,103 @@ EARLY_EXIT_THRESHOLD = 75
 # Not just total score — considers critical signals
 # ─────────────────────────────────────────────────────
 def calculate_verdict(total_score: int, layer_results: list) -> tuple:
+    """
+    Verdict engine that trusts Llama as primary judge.
+    Hard structural signals (spoofing, homograph) can override.
+    Low score safety net prevents hallucination-caused false positives.
+    """
 
     layer_map = {r.get("layer", ""): r for r in layer_results}
     auth = layer_map.get("Authentication", {})
     domain = layer_map.get("Domain Intelligence", {})
+    psych = layer_map.get("Psychological Analysis", {})
     behavior = layer_map.get("Sender Behaviour", {})
+    ai = layer_map.get("AI Analysis", {})
 
     auth_details = auth.get("details", {})
     domain_details = domain.get("details", {})
+    psych_details = psych.get("details", {})
     behavior_details = behavior.get("details", {})
+    ai_details = ai.get("details", {})
 
+    triggers = psych_details.get("triggers", {}).get("triggers_found", {})
     is_legitimate = behavior_details.get("legitimate", False)
 
-    # Hard structural signals
+    # ── HARD STRUCTURAL SIGNALS ──
     spoofing = auth_details.get("spoofing", {}).get("spoofing_detected", False)
     homograph = domain_details.get("homograph", {}).get("has_homograph", False)
     lookalike = domain_details.get("lookalike", {}).get("is_lookalike", False)
     fake_nepal_gov = domain_details.get("tld_check", {}).get("is_fake_nepal_gov", False)
+    no_structural_threat = not (spoofing or homograph or lookalike or fake_nepal_gov)
 
     # ── ABSOLUTE SAFETY NET ──
-    # If score is very low AND no hard structural threats
-    # Nothing can make this SCAM — not even Llama
-    no_structural_threat = not (spoofing or homograph or lookalike or fake_nepal_gov)
+    # Score 10 or below with no structural threat = SAFE
+    # No override can change this — prevents Llama hallucination
     if total_score <= 10 and no_structural_threat:
         return "SAFE", "HIGH"
 
-    # ── REST OF LOGIC CONTINUES ──
+    # ── HARD STRUCTURAL OVERRIDES ──
+    # These cannot be faked — always SCAM regardless of Llama
+    if spoofing or homograph or lookalike or fake_nepal_gov:
+        return "SCAM", "HIGH"
 
     # ── LLAMA IS PRIMARY JUDGE ──
     llama_verdict = ai_details.get("verdict", "UNKNOWN")
     llama_confidence = ai_details.get("confidence", "LOW")
     llama_ran = not ai.get("early_exit", False) and llama_verdict != "UNKNOWN"
 
-    # If Llama ran and gave a confident verdict — trust it
     if llama_ran:
         if llama_verdict == "SCAM":
-            return "SCAM", "HIGH"
+            # Only trust Llama's SCAM if score supports it
+            if total_score >= 20:
+                return "SCAM", "HIGH"
+            else:
+                # Low score + Llama says SCAM = Llama is hallucinating
+                return "SAFE", "MEDIUM"
+
         elif llama_verdict == "SUSPICIOUS":
+            has_bec = "bec_signals" in triggers
+            has_payment = "payment_pressure" in triggers
+            has_financial = "financial_bait" in triggers
+            has_secrecy = "secrecy" in triggers
+            has_credential = "credential_request" in triggers
+            has_authority = "authority" in triggers
+
+            # Llama says SUSPICIOUS + psychology confirms specific attack patterns
+            # These combinations are high confidence scams even without SCAM verdict
+            if has_bec and (has_payment or has_financial) and not is_legitimate:
+                return "SCAM", "HIGH"
+
+            if has_credential and has_authority and not is_legitimate:
+                return "SCAM", "HIGH"
+
+            if has_secrecy and has_payment and not is_legitimate:
+                return "SCAM", "HIGH"
+
+            # Generic suspicious with decent score
             if total_score >= 30:
                 return "SUSPICIOUS", "MEDIUM"
             else:
                 return "SAFE", "MEDIUM"
+
         elif llama_verdict == "SAFE":
-            # Even if Llama says safe, check for critical combinations
+            # Even if Llama says SAFE, check critical trigger combinations
             has_credential = "credential_request" in triggers
             has_authority = "authority" in triggers
             has_secrecy = "secrecy" in triggers
             has_payment = "payment_pressure" in triggers
 
-            # These combinations override even Llama's SAFE verdict
+            # Credential harvesting + authority = phishing regardless of Llama
             if has_credential and has_authority and not is_legitimate:
                 return "SCAM", "HIGH"
+
+            # Secrecy + payment = BEC regardless of Llama
             if has_secrecy and has_payment and not is_legitimate:
                 return "SCAM", "HIGH"
 
             return "SAFE", "HIGH" if total_score < 15 else "MEDIUM"
 
-  
     # ── FALLBACK — Llama skipped (early exit) or failed ──
-    # Check if early exit was triggered — means layers already confirmed threat
     early_exit_triggered = any(
         r.get("early_exit", False) and r.get("layer") == "AI Analysis"
         for r in layer_results
@@ -91,7 +129,7 @@ def calculate_verdict(total_score: int, layer_results: list) -> tuple:
     if early_exit_triggered:
         return "SCAM", "HIGH"
 
-    # Normal score based fallback
+    # Score based fallback
     if total_score >= 55:
         return "SCAM", "HIGH"
     elif total_score >= 35:
@@ -100,7 +138,6 @@ def calculate_verdict(total_score: int, layer_results: list) -> tuple:
         return "SAFE", "HIGH"
     else:
         return "SAFE", "MEDIUM"
-    
     
 def get_recommended_action(verdict: str, score: int) -> str:
     if verdict == "SCAM":
