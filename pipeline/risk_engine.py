@@ -14,7 +14,7 @@ from pipeline.layers import (
     layer6_rag,
     layer7_llama,
 )
-
+from pipeline.layers import layer_threat_intel
 # If preliminary score exceeds this — skip Llama
 EARLY_EXIT_THRESHOLD = 75
 
@@ -191,6 +191,7 @@ async def analyze_all_layers(email_data: dict) -> dict:
         layer3_psychology.run(email_data),
         layer4_links.run(email_data),
         layer5_behavior.run(email_data),
+        layer_threat_intel.run(email_data),
         return_exceptions=True
     )
 
@@ -235,7 +236,7 @@ async def analyze_all_layers(email_data: dict) -> dict:
         r.get("early_exit", False) for r in processed_results
     )
 
-    print(f"\n📊 Preliminary score: {preliminary_score}/95")
+    print(f"\n📊 Preliminary score: {preliminary_score}/125")
 
     # ─────────────────────────────────────────
     # PHASE 3 — Llama AI
