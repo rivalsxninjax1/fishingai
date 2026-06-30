@@ -122,6 +122,21 @@ def fetch_emails_since_checkpoint(mail, last_uid=None, first_run_limit=20):
                         category = "forums"
                 except Exception:
                     category = "primary"
+                     # Extract attachments metadata
+                attachments = []
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        content_disposition = str(part.get("Content-Disposition", ""))
+                        if "attachment" in content_disposition:
+                            filename = part.get_filename()
+                            if filename:
+                                payload = part.get_payload(decode=True)
+                                attachments.append({
+                                    "filename": filename,
+                                    "size": len(payload) if payload else 0,
+                                    "content_type": part.get_content_type(),
+                                    "payload": payload[:50000] if payload else b""
+                                })
 
                 emails.append({
                     "uid": uid.decode() if isinstance(uid, bytes) else str(uid),
@@ -131,8 +146,8 @@ def fetch_emails_since_checkpoint(mail, last_uid=None, first_run_limit=20):
                     "body": body[:2000],
                     "date": date_header,
                     "gmail_category": category,
+                    "attachments": attachments,   # ← NEW
                 })
-
         uid_int = int(uid)
         if highest_uid is None or uid_int > int(highest_uid):
             highest_uid = str(uid_int)

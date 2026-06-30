@@ -15,6 +15,8 @@ from pipeline.layers import (
     layer7_llama,
 )
 from pipeline.layers import layer_threat_intel
+from pipeline.layers import layer_threat_intel
+from pipeline.layers import layer_attachments
 # If preliminary score exceeds this — skip Llama
 EARLY_EXIT_THRESHOLD = 75
 
@@ -192,6 +194,7 @@ async def analyze_all_layers(email_data: dict) -> dict:
         layer4_links.run(email_data),
         layer5_behavior.run(email_data),
         layer_threat_intel.run(email_data),
+        layer_attachments.run(email_data),
         return_exceptions=True
     )
 
